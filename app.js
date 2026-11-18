@@ -54,6 +54,31 @@ const stars = (n, dark) => {
   return h + '</span>';
 };
 
+/* ---- מי אני, והציון של החבורה ----
+   כל משפחה בחבורה נותנת ציון משלה. ׳הציון שלנו׳ הוא הממוצע. */
+const WHO_KEY = 'vac_who';
+const who = () => { try { return localStorage.getItem(WHO_KEY) || ''; } catch (e) { return ''; } };
+const setWho = (v) => { try { localStorage.setItem(WHO_KEY, v); } catch (e) {} };
+
+const votesOf = (p) => {
+  const v = (p && p.votes) || {};
+  return Object.entries(v).filter(([, n]) => +n > 0);
+};
+const crewScore = (p) => {
+  const v = votesOf(p);
+  if (!v.length) return null;
+  return v.reduce((s, [, n]) => s + (+n), 0) / v.length;
+};
+
+async function askWho() {
+  const cur = who();
+  const v = prompt('מי נותן את הציון? (שם המשפחה או השם הפרטי)', cur || '');
+  if (v === null) return cur;
+  const t = v.trim();
+  if (t) setWho(t);
+  return t || cur;
+}
+
 const cover = (p) => {
   const ph = arr(p.photos);
   if (!ph.length) return '';
@@ -93,15 +118,28 @@ function flatUnits(cap) {
 function fitFor(p, n) {
   const cap = p.capacity || {};
   const units = flatUnits(cap);
-  const pick = units.slice(0, n);
   const need = CREW.peopleFor(n);           // התרחיש התובעני: המשפחות הגדולות נוסעות
+  const fails = [];
+
+  // וילה אחת: אין ׳יחידה למשפחה׳, אלא חדרים ושירותים משותפים בתוך בית אחד.
+  if (p.layout === 'villa') {
+    const beds = units.reduce((s, u) => s + u.sleeps, 0);
+    const rooms = units.reduce((s, u) => s + (u.bedrooms || 1) * 1, 0);
+    const baths = +cap.bathroomsTotal || 0;
+    if (rooms && rooms < n) fails.push(`${rooms} חדרי שינה מול ${n} משפחות`);
+    if (beds && beds < need) fails.push(`${beds} מיטות מול ${need} נפשות`);
+    if (baths && baths < n) fails.push(`${baths} חדרי רחצה מול ${n} משפחות`);
+    const unknown = !units.length || !beds;
+    return { ok: !fails.length && !unknown, unknown, fails, units: rooms, beds, baths, need, villa: true };
+  }
+
+  const pick = units.slice(0, n);
   const beds = pick.reduce((s, u) => s + u.sleeps, 0);
   const baths = nz(cap.bathroomsTotal)
     ? +cap.bathroomsTotal
     : pick.reduce((s, u) => s + (u.bathrooms || 0), 0);
   const rooms = pick.every(u => !u.bedrooms || u.bedrooms >= 2);
 
-  const fails = [];
   if (units.length < n) fails.push(`יש ${units.length} יחידות בלבד`);
   if (beds && beds < need) fails.push(`${beds} מיטות מול ${need} נפשות`);
   if (baths && baths < n) fails.push(`${baths} שירותים מול ${n} משפחות`);
@@ -142,6 +180,19 @@ async function remove(key) {
   delete S.places[key];
 }
 
+/* הצבעה של משפחה אחת. PATCH על ענף ה-votes בלבד, כדי ששתי משפחות
+   שמדרגות באותו רגע לא ידרסו אחת את השנייה. */
+async function voteFor(key, name, value) {
+  const url = `${PLACES_URL(key).replace(/\.json$/, '')}/votes.json`;
+  const r = await fetch(url, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ [name]: value }),
+  });
+  if (!r.ok) throw new Error('שמירת הציון נכשלה (' + r.status + ')');
+  S.places[key] = S.places[key] || {};
+  S.places[key].votes = { ...(S.places[key].votes || {}), [name]: value };
+}
+
 const newKey = () => 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 /* ============================ filtering ============================ */
@@ -154,7 +205,7 @@ function visible() {
     .filter(([, p]) => !S.fams || (+((p.capacity || {}).maxFamilies) || 0) >= S.fams)
     .filter(([, p]) => S.priv === 'all' || ['exclusive', 'isolated'].includes(p.privacy))
     .sort((a, b) => {
-      const ra = +((a[1].rating || {}).ours) || 0, rb = +((b[1].rating || {}).ours) || 0;
+      const ra = crewScore(a[1]) || 0, rb = crewScore(b[1]) || 0;
       if (rb !== ra) return rb - ra;
       return (b[1].createdAt || 0) - (a[1].createdAt || 0);
     });
@@ -188,7 +239,7 @@ function card(k, p) {
   const reg = p.region === 'world' ? 'world' : 'il';
   const loc = [p.area, reg === 'world' ? p.country : null].filter(nz).join(' · ');
   const cap = p.capacity || {};
-  const ours = (p.rating || {}).ours;
+  const ours = crewScore(p);
   const pr = p.pricePerNight || {};
   const nic = arr(p.niches).map(n => nicheOf(n).icon).join('');
   return `<article class="card" data-k="${esc(k)}">
@@ -209,7 +260,7 @@ function card(k, p) {
           <span class="badge fam">👨‍👩‍👧‍👦 ${esc(famShort(cap.maxFamilies))}</span>
           ${nz(ours) ? stars(ours) : '<span class="badge ghost">בלי ציון</span>'}
           ${nz(pr.amount) ? `<span class="badge ghost">${esc(money(pr.amount, pr.currency))} / לילה</span>` : ''}
-          ${p.privacy === 'exclusive' ? '<span class="badge ghost">🔒 רק אנחנו</span>'
+          ${p.privacy === 'exclusive' ? '<span class="badge ghost">🔒 כל המתחם שלנו</span>'
             : (p.privacy === 'isolated' ? '<span class="badge ghost">🌵 מבודד</span>' : '')}
         </div>
       </div>
@@ -243,7 +294,7 @@ function renderMap(v) {
         ${loc ? `<div class="pop-l">${esc(loc)}</div>` : ''}
         <div class="pop-m">
           <span class="tag">👨‍👩‍👧‍👦 ${esc(famShort((p.capacity || {}).maxFamilies))}</span>
-          ${nz((p.rating || {}).ours) ? stars(p.rating.ours, true) : ''}
+          ${nz(crewScore(p)) ? stars(crewScore(p), true) : ''}
         </div>
         <a class="pop-go" href="#" data-k="${esc(k)}">לפרטים המלאים</a>
       </div></div>`);
@@ -337,23 +388,33 @@ function detailHtml(k, p) {
 
   /* ציונים */
   const webs = Object.entries(rt.web || {}).filter(([, v]) => nz(v));
+  const vts = votesOf(p), avg = crewScore(p), me = who(), mine = +((p.votes || {})[me]) || 0;
   h += `<div class="sec"><h3>ציונים והמלצות</h3><div class="scorebar">
-      <div class="scorebox"><b>${nz(rt.ours) ? (+rt.ours).toFixed(1) : '–'}</b><small>הציון שלנו</small></div>
+      <div class="scorebox"><b>${nz(avg) ? avg.toFixed(1) : '–'}</b>
+        <small>${vts.length ? `ממוצע ${vts.length} מהחבורה` : 'עוד אף אחד לא דירג'}</small></div>
       ${webs.map(([s, v]) => `<div class="scorebox"><b>${esc(v)}</b><small>${esc(srcName(s))}</small></div>`).join('')}
       ${nz(rec.count) ? `<div class="scorebox"><b>${esc(rec.count)}</b><small>ממליצים</small></div>` : ''}
     </div>
-    <div style="margin-top:12px">
-      <div style="font-size:13px;color:var(--ink3);font-weight:700;margin-bottom:6px">הציון שלנו — לחיצה אחת</div>
+    <div style="margin-top:14px">
+      <div style="font-size:13px;color:var(--ink3);font-weight:700;margin-bottom:6px">
+        הציון של <span id="whoami">${esc(me || 'מי שלוחץ')}</span> — לחיצה אחת
+        <button id="chwho" style="color:var(--accent);font-weight:700;font-size:12px">החלפה</button></div>
       <div class="rate" id="rate">` +
-    [1, 2, 3, 4, 5].map(i => `<button data-v="${i}" class="${i <= (+rt.ours || 0) ? 'on' : ''}">★</button>`).join('') +
-    `</div></div></div>`;
+    [1, 2, 3, 4, 5].map(i => `<button data-v="${i}" class="${i <= mine ? 'on' : ''}">★</button>`).join('') +
+    `</div>
+      ${vts.length ? `<div class="tagrow" style="margin-top:11px">` + vts
+        .sort((a, b) => b[1] - a[1])
+        .map(([n, v]) => `<span class="tag">${esc(n)} ${'★'.repeat(+v)}</span>`).join('') + `</div>` : ''}
+    </div></div>`;
 
   /* הרכב + התאמה להרכבי החבורה */
   const units = flatUnits(cap);
   if (units.length || nz(cap.note) || nz(cap.bathroomsTotal)) {
     h += `<div class="sec"><h3>לכמה משפחות, ומה ההרכב</h3>`;
     h += `<p style="font-size:14.5px;color:var(--ink2)">${esc(famLabel(cap.maxFamilies))}`;
-    if (units.length) h += ` · ${units.length} יחידות`;
+    if (units.length) h += p.layout === 'villa'
+      ? ` · ${units.reduce((a, u) => a + (u.bedrooms || 1), 0)} חדרי שינה`
+      : ` · ${units.length} יחידות`;
     if (nz(cap.bathroomsTotal)) h += ` · ${esc(cap.bathroomsTotal)} שירותים`;
     h += `</p>`;
     if (arr(cap.units).length) {
@@ -515,11 +576,19 @@ function wireDetail(k, p) {
   bind('#fplus', () => { fams = Math.min(CREW.families, fams + 1); $('#fv').textContent = fams; calc(); });
   calc();
 
+  const chw = $('#chwho');
+  if (chw) chw.onclick = async () => { await askWho(); openDetail(k); };
+
   $$('#rate button').forEach(b => b.onclick = async () => {
+    let me = who();
+    if (!me) { me = await askWho(); if (!me) { toast('צריך שם כדי לשמור ציון'); return; } }
     const v = +b.dataset.v;
     $$('#rate button').forEach(x => x.classList.toggle('on', +x.dataset.v <= v));
-    try { await save(k, { ...p, rating: { ...(p.rating || {}), ours: v } }); toast('הציון נשמר'); render(); }
-    catch (e) { toast(e.message); }
+    try {
+      await voteFor(k, me, v);
+      toast(`הציון של ${me} נשמר`);
+      openDetail(k); render();
+    } catch (e) { toast(e.message); }
   });
 
   const hs = $('#hs');
@@ -635,10 +704,8 @@ function formHtml(p) {
     </div>
 
     <div class="fgroup"><h4>המלצות, ציונים וביקורות</h4>
-      <div class="f2">
-        ${f('הציון שלנו (1-5)', 'f_ours', rt.ours, 'number')}
-        ${f('כמה ממליצים נמצאו', 'f_reccount', rec.count, 'number')}
-      </div>
+      ${f('כמה ממליצים נמצאו', 'f_reccount', rec.count, 'number',
+        'הציון שלנו לא נקבע כאן — כל משפחה מדרגת בכוכבים בכרטיס עצמו')}
       <div class="f2">
         ${f('ציון Booking', 'f_wb', web.booking, 'text', 'למשל 8.9', true)}
         ${f('ציון גוגל', 'f_wg', web.google, 'text', 'למשל 4.7', true)}
@@ -778,7 +845,7 @@ function wireForm(k, p) {
         km: num('f_km'), fromLabel: str('f_from'), note: str('f_tnote'),
       },
       rating: {
-        ours: num('f_ours'),
+        ours: (p.rating || {}).ours || null,
         web: { booking: str('f_wb'), google: str('f_wg'), airbnb: str('f_wa'), weekend: str('f_ww') },
       },
       rec: { count: num('f_reccount'), sources, quotes },
