@@ -1,0 +1,7 @@
+{
+  "_comment": "הענף שצריך להוסיף לכללים הקיימים של home-picks-47450 כדי להעביר את מאגר החופשות לענף משלו. מוסיפים את הבלוק 'vacations' לתוך 'rules' הקיים, ליד 'picks' ו-'garden_scores', ומפרסמים.",
+  "vacations": {
+    ".read": true,
+    ".write": true
+  }
+}

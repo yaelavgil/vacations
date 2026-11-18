@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>מקומות לחופשה</title>
+<meta name="description" content="מאגר מקומות החופשה שלנו — בארץ ובעולם, לפי נישה ולפי כמה משפחות נוסעות.">
+<meta name="theme-color" content="#f6f4f0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="חופשות">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+      integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+      crossorigin="anonymous" referrerpolicy="no-referrer">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <div class="brand">🧳 מקומות לחופשה</div>
+    <div class="vtabs" role="tablist">
+      <button class="vtab" role="tab" data-v="list" aria-selected="true">רשימה</button>
+      <button class="vtab" role="tab" data-v="map" aria-selected="false">מפה</button>
+    </div>
+    <button class="icon-btn" id="btn-x" title="מקומות שלא חוזרים אליהם" aria-label="החרגות">⊘</button>
+    <button class="icon-btn" id="btn-reload" title="רענון" aria-label="רענון">⟳</button>
+  </div>
+
+  <div class="niches" id="niches"></div>
+  <div class="nhint" id="nhint"></div>
+  <div class="filters" id="filters"></div>
+  <div class="filters" id="areas"></div>
+  <div class="count" id="count">טוען…</div>
+</header>
+
+<main>
+  <div id="list"><div class="loading"><div class="spin"></div>טוען את המאגר…</div></div>
+  <div id="mapwrap" class="hidden">
+    <div id="map"></div>
+    <div class="count" id="mapnote" style="padding:0 2px 10px"></div>
+  </div>
+</main>
+
+<button class="fab" id="fab" aria-label="הוספת מקום">+</button>
+
+<div class="sheet-bg" id="sheet-bg"></div>
+<section class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="grab"></div>
+  <div class="sheet-head">
+    <h2 id="sheet-title"></h2>
+    <button class="icon-btn" id="btn-close" aria-label="סגירה">✕</button>
+  </div>
+  <div class="sheet-body" id="sheet-body"></div>
+  <div class="sheet-foot hidden" id="sheet-foot"></div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
