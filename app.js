@@ -205,8 +205,11 @@ function visible() {
     .filter(([, p]) => !S.fams || (+((p.capacity || {}).maxFamilies) || 0) >= S.fams)
     .filter(([, p]) => S.priv === 'all' || ['exclusive', 'isolated'].includes(p.privacy))
     .sort((a, b) => {
+      // קודם מה שדירגנו, אחר כך רשומות מלאות, ורק בסוף מה שהמחקר עליו חלקי
       const ra = crewScore(a[1]) || 0, rb = crewScore(b[1]) || 0;
       if (rb !== ra) return rb - ra;
+      const da = a[1].status === 'draft' ? 1 : 0, db = b[1].status === 'draft' ? 1 : 0;
+      if (da !== db) return da - db;
       return (b[1].createdAt || 0) - (a[1].createdAt || 0);
     });
 }
